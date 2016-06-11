@@ -9,6 +9,7 @@ import numpy as np
 # INPUTS
 #fOutRechts = 'rechts_febFirst2weeks.pickle'
 
+# testing edition
 
 times = pd.date_range(start = datetime(2011, 1, 1), end = datetime(2011, 12, 31, 23, 59), freq = 'T')
 
