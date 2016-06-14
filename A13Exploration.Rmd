@@ -1,0 +1,770 @@
+---
+title: "A13 Exploration"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, error = FALSE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(tidyr)
+library(lubridate)
+library(stringi)
+library(RColorBrewer)
+library(feather)
+```
+
+# Thoughts
+
+Junction elements:
+
+- Task        : Amount of traffic flowing through in all its directions.
+- Performance : Average speed of the flow in all its directions.
+- Components  : (configuration) The physical elements that make the junction a real thing.
+
+Comparing the tasks and performance of junctions is a great way compare and improve traffic situations. However, the roads and junctions are a network and therefore inter-connected. Hence the poor performance of a junction may be due to the poor performance of a nearby system (road, junction, etc.) and not because of its own components/configuration. However, if a junction has excellent performance we can pride its components and configuration. Statements:
+
+- Poor performance can inflict poor performance. The poor performance of a junction can be due to its components but is not necessarily so, you have to consider the system it is in.
+- Good performance is due to its components.
+
+This means that you can't simply replace the components of a bad performing junction with components of a similar (in task) components of a good performing junction. Because the bad performance may be due to the system. Hence, you  first have to analyse the traffic as a whole. 
+
+I would suggest that analysis is done to inspect the origin of bad traffic. We should assume that this is either at a junction, or at a place of an accident or similar unpredicted event. 
+
+If we can identify the junction that first starts clogging and slow down overal traffic than we can start by applying junction analysis on that junction. Identify its task, identify other junctions with a similar task, and do a perfomance analysis. 
+
+In the following exploration we have originally skipped a proper analysis of localising the origin of traffic problems and we started to analyse junction A13 N470 because we were told it is a troublesome junction. However, in the 4th round of analysis We did look into the complete A13 and managed to identify the N470 junction not just as an area where traffic problems happen around but also as the origin/cause of many traffic problems.
+
+See the [Shiny app](https://jiddualexander.shinyapps.io/A13_app/) for an interactive analysis of the 4th round.
+
+# Data 
+
+I've requested and gathered a lot of data from the NDW open data. A request can be submitted [here](http://ndwopendata.kxa.nl). You can receive intensity or speed data for 10 locations per request and data is averaged to hourly blocks, an average over all the days you request. I've focused on Thursday data from all Thursdays in April and May 2016. 
+
+Shamelessly, I preprocessed the data in Excel. Although it wasn't really processing, more moving the data together in neat tables. Both the 'raw' sheets and the combined tables are available on Github, if not than remind me.
+
+# 1st round analysis
+
+I've collected speed and intensity data from ten locations around the A13 N470 junction.
+
+```{r}
+Hour_A13N470_1 <- read_csv("NDW Data/A13/Hourly Data A13 N470 1.0.csv")
+Info_A13N470_1 <- read_csv("NDW Data/A13/Info A13 N470 1.0.csv")
+
+data <- tbl_df(Hour_A13N470_1)
+```
+
+Rename columns for easier manipulation and plotting.
+
+```{r}
+names(data)[c(1,6,11)] <- c("Time", "IpH", "SpH")
+```
+
+Create a map of the locations at which there are intensity and speed measurements.
+
+```{r}
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = data, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+Plot the intensity versus speed of each of the ten measurement locations.
+
+```{r}
+data %>% 
+  ggplot(aes(x = IpH, y = SpH, col = factor(ID))) + 
+    geom_point(alpha = 0.4) +
+    geom_smooth(se = FALSE)
+```
+
+The plot shows a clear separation by speed of the roads. 
+
+The N470 seems equally busy on both sides but the traffic is much faster on Kruithuisweg (ID 1,2,3 West of the A13), than on the namesless N470 (ID 4,5 East of the A13). I assume that's because they are different road types, with different speed limits.
+
+The A13 also shows differences. South-East bound towards Rotterdam seems to drop a lot of speed when it gets really busy, while North-West bound towards Den Haag doesn't drop in speed for the same intensity.
+
+## 1st round analysis findings: 
+
+- ID number 3 is miss-located. It's far away and from now on disregarded.
+- ID 6 and 7 are almost equal, because there's only straight road in between them. Keep 7, get rid of 6
+- ID 8, 9 and 10 are almost equal, like 6 and 7. Keep 9, delete 8 and 10.
+
+We are now left with six directions with ID 1, 2, 4, 5, 7 and 9. We will add four more directions on the A13, in both directions of the A13 outside of both N470 exits. An image will illustrate all directions.
+
+```{r}
+rm(data)
+rm(Hour_A13N470_1)
+rm(Info_A13N470_1)
+```
+
+# 2nd round analysis
+
+First we filter the data we are interested in, with ID numbers: 1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19.
+
+```{r}
+Hour_A13N470_2 <- read_csv("NDW Data/A13/Hourly Data A13 N470 1.1.csv")
+Info_A13N470_2 <- read_csv("NDW Data/A13/Info A13 N470 1.1.csv")
+
+data <- tbl_df(Hour_A13N470_2 %>% filter(ID %in% c(1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19)))
+info <- tbl_df(Info_A13N470_2 %>% filter(ID %in% c(1, 2, 4, 5, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19)))
+```
+
+Rename columns for easier manipulation and plotting.
+
+```{r}
+names(data)[c(1,6,11)] <- c("Time", "IpH", "SpH")
+```
+
+Create a map of the locations at which there are intensity and speed measurements.
+
+```{r}
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = data, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+The newly added data at ID 11 to 19 probably have a lot of similarity. Expect ID's to be similar between 11 and 12, 16 and 17, 13 and 14 and 15, and 18 and 19.
+
+```{r}
+data %>% 
+  filter(ID %in% 11:19) %>% 
+  ggplot(aes(x = IpH, y = SpH, col = factor(ID))) + 
+    geom_point(alpha = 0.4) +
+    geom_smooth(se = FALSE)
+```
+
+The expectation was correct hence we can drop some ID numbers. Based on map locality I pick 12, 14, 17, and 18 to remain.
+
+That results in a map:
+```{r}
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = data, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+With corresponding intensity-speed plot:
+```{r}
+data <- data %>% filter(ID %in% c(1, 2, 4, 5, 7, 9, 12, 14, 17, 18))
+info <- info %>% filter(ID %in% c(1, 2, 4, 5, 7, 9, 12, 14, 17, 18))
+```
+```{r}
+data %>% 
+  ggplot(aes(x = IpH, y = SpH, col = factor(ID))) + 
+    geom_point(alpha = 0.4) +
+    geom_smooth(se = FALSE)
+```
+
+## Explore Kruithuisplein
+
+We might not have the full data of what happens around the junction but we extrapolate more info from the data we have. We try to understand Kruithuisplein, the actual junction with traffic lights sitting on top of the A13.
+
+![](img/A13 N470 TL.png)
+Traffic light locations with labels.
+
+We would love the traffic light data for this junction, but without it we'll try to undestand as much as possible with the following breakdown:
+
+- On A13 towards Den Haag we have ID 14, 7, and 12. 
++ Intensity of 14 minus 7 is the intensity entering the traffic light TL3.
++ Intensity of 12 minus 7 is part of the intensity leaving traffic lights TL1 and TL2 combined.
+- Similarly A13 towards Rotterdam we have ID 17, 9, and 18.
++ Intensity of 17 minus 9 is the intensity entering the traffic light TL7.
++ Intensity of 18 minus 9 is part of the intensity leaving traffic lights TL5 and TL6 combined.
+- On Kruithuisweg N470 towards Delft Zuid we have ID 1 and 2. Since there is another exit between these locations and Kruithuisplein we are unsure of the amount of traffic leaving and entering Kruithuisplein. However, we can assume that traffic leaving and entering the N470 roughly equals each other (may be false assumptions). Than ID 1 equals part of TL7 and TL8 combined and ID2 equals TL5. 
+- On the opposite side of the A13 we have N470 intensity and speed data that is all data from Kruithuisplein at ID's 4 and 5. Traffic entering TL1 comes from ID5, and ID4 comes from TL3 and TL4 combined.
+
+Hence, in terms of intensity
+
+- TL1 equals ID5
+- TL3 equals ID14 - ID7
+- TL5 equals ID2 (based on assumption)
+- TL7 equals ID17 - ID9
+- TL2 is greater than TL3 - ID4
+- TL4 is greater than TL5 - (ID18 - ID9) 
+- TL6 is greater than TL7 - ID1
+- TL8 is greater than TL1 - (ID12 - ID7)
+
+Separate intensity data and generate the traffic light data.
+
+```{r}
+TL <- data %>% 
+  select(c(1,2,6)) %>% 
+  mutate(ID = paste0("ID_", ID)) %>% 
+  spread(ID, IpH)
+
+TL <- TL %>% 
+  mutate(TL_1  = ID_5,
+         TL_3  = ID_14 - ID_7,
+         TL_5  = ID_2,
+         TL_7  = ID_17 - ID_9,
+         TL_2p = TL_3 - ID_4,
+         TL_4p = TL_5 - (ID_18 - ID_9), 
+         TL_6p = TL_7 - ID_1,
+         TL_8p = TL_1 - (ID_12 - ID_7))
+```
+
+Plot the traffic light data. Note that half the traffic lights are calculated as greater than (they are plotted with dotted lines).
+
+```{r}
+TL %>% 
+  select(c(1,12:19)) %>% 
+  gather("TrafficLight", "I", 2:9) %>% 
+  mutate("Time" = as.numeric(substr(Time, 1, 2)),
+         "Actual" = grepl("p", TrafficLight)) %>%
+  ggplot(aes(x = Time, y = I, col = TrafficLight)) +
+    geom_point(alpha = 0.5) + 
+    geom_path(aes(linetype = Actual))
+```
+
+## Explore Intensity map of 10 important directions
+
+Instead of looking at Kruithuisplein we now explore the ten important flows.
+
+- W_O = ID1
+- W_I = ID2
+- E_O = ID4
+- E_I = ID5
+- S_T = ID7
+- N_T = ID9
+- S_I = ID14 - ID7
+- N_O = ID12 - ID7
+- N_I = ID17 - ID9
+- S_O = ID18 - ID9
+
+```{r}
+intensity <- data %>% 
+  select(c(1,2,6)) %>% 
+  mutate(ID = paste0("ID_", ID)) %>% 
+  spread(ID, IpH) %>% 
+  transmute(
+    Time = as.numeric(substr(Time, 1, 2)),
+    Junction = "A13 N470",
+    W_O = ID_1,
+    W_I = ID_2,
+    E_O = ID_4,
+    E_I = ID_5,
+    S_T = ID_7,
+    N_T = ID_9,
+    S_I = ID_14 - ID_7,
+    N_O = ID_12 - ID_7,
+    N_I = ID_17 - ID_9,
+    S_O = ID_18 - ID_9)
+```
+
+Plot the intensity 'signature' of the junction.
+
+```{r}
+intensity %>% 
+  gather("Dir", "I", 3:12) %>% 
+  mutate(Dir2 = factor(substr(Dir, 1, 1)),
+         Dir3 = factor(substr(Dir, 3, 3))) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_path()
+```
+
+To explain the plot:
+
+- The x-axis is time, in hour of the day. The y axis is intensity, number of cars per hour.
+- E, N, S, and W are roads leading up to the junction from East, North, South and West. Respectively the N470 unnamed, the A13 (both directions) north of the junction, the A13 south of the junction, and the N470 Kruithuisweg.
+- I, O and T stand for in to, out of, and through (underneath) the junction. 
+
+So the red line with circles is the road on the east entering the junction (ID5). Or the green line with squares is the road on the north going underneath the junction (ID9).
+
+My apologies for the complication. When we compare with other junctions it might makes sense and be useful.
+
+Before we head on we may as well quickly gather the velocity data for the similar directions. We check the velocities only on the roads where people are driving. We check traffic from the south driving through (S\_T is ID\_7), from the north going through (N\_T is ID\_9), and West and East coming in and going out.
+```{r}
+velocity <- data %>% 
+  select(c(1, 2, 11)) %>% 
+  mutate(ID = paste0("ID_", ID)) %>% 
+  spread(ID, SpH) %>% 
+  transmute(
+    Time = as.numeric(substr(Time, 1, 2)),
+    Junction = "A13 N470",
+    W_O = ID_1,
+    W_I = ID_2,
+    E_O = ID_4,
+    E_I = ID_5,
+    S_T = ID_7,
+    N_T = ID_9)
+```
+And plot.
+```{r}
+velocity %>% 
+  gather("Dir", "I", 3:8) %>% 
+  mutate(Dir2 = factor(substr(Dir, 1, 1)),
+         Dir3 = factor(substr(Dir, 3, 3))) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_smooth(se = FALSE, span = 0.5)
+```
+
+Most importantly is the dip in Southbound direction in the afternoon. This is it's worst performing part. We can analyse the southbound average speed around the junction and see if the performance increases, decreases or remains the same as traffic passes this junction. Passing location ID's 16, 17, 9, 18, 19 in that order. 
+
+Select data:
+```{r}
+SB_vel <- tbl_df(Hour_A13N470_2) %>% 
+  select(c(1, 2, 11)) %>% 
+  filter(ID %in% c(16, 17, 9, 18, 19)) %>% 
+  transmute(Time = as.numeric(substr(`Uur op de dag`, 1, 2)),
+            ID   = factor(ID, levels = c(16, 17, 9, 18, 19)),
+            SpH  = `Average Speed per hour`)
+```
+Plot:
+```{r}
+ggplot(data = SB_vel, aes(x = Time, y = SpH, col = ID)) +
+  geom_point() +
+  geom_smooth(se = FALSE, span = 0.5, alpha = 0.3)
+```
+
+```{r}
+Hour_A13N470_3 <- read_csv("NDW Data/A13/Hourly Data A13 N470 1.2.csv")
+SB_vel <- tbl_df(Hour_A13N470_3) %>% 
+  select(c(1:5, 11)) %>% 
+  filter(ID %in% c(20, 21, 22, 23, 16, 17, 9, 18, 19, 24, 25, 26, 27, 28)) %>% 
+  transmute(Time = as.numeric(substr(`Uur op de dag`, 1, 2)),
+            ID   = factor(ID, levels = c(20, 21, 22, 23, 16, 17, 9, 18, 19, 24, 25, 26, 27, 28)),
+            SpH  = `Average Speed per hour`,
+            Lat  = Lat,
+            Lon  = Lon,
+            Dis  = as.numeric(stri_sub(Location, -4, -1)))
+```
+
+```{r}
+colours <- colorRampPalette(brewer.pal(8,"Dark2"))(8)
+SB_vel %>% 
+  filter(Time %in% c(7:10, 16:19)) %>% 
+  arrange(ID, Time) %>% 
+  ggplot(aes(x = Dis, y = SpH, col = factor(Time))) +
+    geom_point(position = position_jitter(0.1), alpha = 0.5) +
+    geom_line(stat = "smooth", method = "loess", span = 0.3, size = 2, alpha = 0.7) + 
+    geom_vline(xintercept = c(7.2, 9.1, 11.1, 16.7), color = "darkgrey", linetype = 2) +
+    geom_text(aes(x = 7.2, label = "Brassenkade", y = 50), colour="darkgrey", angle =  90, vjust = 1.2) + 
+    geom_text(aes(x = 9.1, label = "Oostporweg", y = 50), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 11.1, label = "N470", y = 50), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 16.7, label = "N209", y = 50), colour="darkgrey", angle = 90, vjust = 1.2) +
+  scale_color_manual("Hour of \nthe day", values = colours) +
+  labs(title = "Hourly averaged speed southbound along the A13 - Grey lines indicate junctions", x = "Distance by 'hectometer paaltjes' (km)", y = "Average speed for the following hour (km/hr)")
+```
+
+
+
+```{r}
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = SB_vel, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+# 3rd round analysis: Comparing different junctions
+
+Now that we have a profile of intenstiy and speed across the A13 N470 junction we look for junctions with similar intensity. After that we can compare the speed data of both to see which junction handles the same amount of traffic more effectively.
+
+Scrolling the map of data points on [ndwopendata.kxa.nl](http://ndwopendata.kxa.nl) I've identified about 20 junction that could match A13-N470. 
+
+The list is that has been identified.
+
+- A8-N516 (Coenplein, Amsterdam)
+- 
+
+## A8-N516 (Coenplein)
+
+I've collected speed and intensity data from twenty locations around the A8 N516 junction (Coenplein).
+
+```{r}
+Hour_A8N516_1 <- read_csv("NDW Data/A8-N516/Hourly Data A8 N516 1.0.csv")
+Info_A8N516_1 <- read_csv("NDW Data/A8-N516/Info A8 N516 1.0.csv")
+
+coen <- tbl_df(Hour_A8N516_1)
+```
+
+Rename columns for easier manipulation and plotting.
+
+```{r}
+names(coen)[c(1,6,11)] <- c("Time", "IpH", "SpH")
+```
+
+Create a map of the locations at which there are intensity and speed measurements.
+
+```{r}
+# Jitter some geo coords because the overlap completely
+coen[coen$ID %in% c(32, 34, 50),"Lat"] <- coen[coen$ID %in% c(32, 34, 50),"Lat"] + 0.0001
+
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = coen, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+Plot the intensity versus speed of each of the ten measurement locations.
+
+```{r}
+coen %>% 
+  ggplot(aes(x = IpH, y = SpH, col = factor(ID))) + 
+    geom_point(alpha = 0.4) +
+    geom_smooth(se = FALSE)
+```
+
+Explore the overlap and interconnectedness of values at different locations.
+
+- 31 and 32 simply two directions of one road.
+- 49 and 50 simply two direction on another road.
+- Remainder is A8 stuff to sort.
+
+Southbound A8: 36, 35, 33, 34, 41, 42, 43, 51, 52, 53
+```{r, results = "hide"}
+# Intensity taking the exit on Southbound A8
+S1 <- (filter(coen, ID == 36) %>% select(IpH) - filter(coen, ID == 35) %>% select(IpH))[[1]]
+S1
+# 35 turns into 33 and 34
+S3 <- filter(coen, ID == 33) %>% select(IpH) + filter(coen, ID == 34) %>% select(IpH)
+(S3 - filter(coen, ID == 35) %>% select(IpH))[[1]]
+S3 <- S3[[1]]
+# 34 becomes 43 becomes
+(filter(coen, ID == 34) %>% select(IpH) - filter(coen, ID == 43) %>% select(IpH))[[1]]
+# (41 + 42) becomes (51 + 52)
+S4 <- (filter(coen, ID == 41) %>% select(IpH) - filter(coen, ID == 51) %>% select(IpH))[[1]]
+S5 <- (filter(coen, ID == 42) %>% select(IpH) - filter(coen, ID == 52) %>% select(IpH))[[1]]
+S4 + S5
+# 43 becomes 53
+S6 <- (filter(coen, ID == 43) %>% select(IpH) - filter(coen, ID == 53) %>% select(IpH))[[1]]
+S6 
+# 41 + 42 + 43 equals 51 + 52 + 53 
+S4 + S5 + S6
+# 41 + 42 + 43 - (33 + 34) is entering Southbound
+S7 <- (filter(coen, ID == 41) %>% select(IpH) + filter(coen, ID == 42) %>% select(IpH) + filter(coen, ID == 43) %>% select(IpH) - S3)[[1]]
+S7
+```
+
+We want to keep southbound S1 (out), S3 (through) and S7 (in) to plot against A13 N470 data.
+
+Northbound A8: 55, 54, 57, 56, 46, 44, 48
+```{r, results = "hide"}
+# Intenstiy entering the A8 northbound
+# 55 becomes 46
+(filter(coen, ID == 55) %>% select(IpH) - filter(coen, ID == 46) %>% select(IpH))[[1]]
+# 56 becomes 48
+(filter(coen, ID == 56) %>% select(IpH) - filter(coen, ID == 48) %>% select(IpH))[[1]]
+# (46 + 48) becomes 47 becomes 40. (don't trust 47 with it's missing data)
+(filter(coen, ID == 46) %>% select(IpH) + filter(coen, ID == 48) %>% select(IpH) - filter(coen, ID == 47) %>% select(IpH))[[1]]
+(filter(coen, ID == 40) %>% select(IpH) - filter(coen, ID == 47) %>% select(IpH))[[1]]
+# 54 becomes 44 becomes 45 becomes 37
+(filter(coen, ID == 54) %>% select(IpH) - filter(coen, ID == 44) %>% select(IpH))[[1]]
+(filter(coen, ID == 44) %>% select(IpH) - filter(coen, ID == 45) %>% select(IpH))[[1]]
+(filter(coen, ID == 45) %>% select(IpH) - filter(coen, ID == 37) %>% select(IpH))[[1]]
+# (37 + 40) becomes (38 exit traffic)
+N2 <- filter(coen, ID == 38) %>% select(IpH)
+N1 <- (filter(coen, ID == 37) %>% select(IpH) + filter(coen, ID == 40) %>% select(IpH) - N2)[[1]]
+N1
+N2 <- N2[[1]]
+# (38 + entering traffic becomes 39)
+N3 <- (filter(coen, ID == 39) %>% select(IpH) - filter(coen, ID == 38) %>% select(IpH))[[1]]
+N3
+```
+
+We want to keep northbound N1 (out), N2 (through), N3 (in).
+
+```{r}
+intensity_coen <- data_frame(
+    Time = c(0:23),
+    Junction = rep("A8 N516", 24),
+    W_O = coen[coen$ID == 32, "IpH"][[1]],
+    W_I = coen[coen$ID == 31, "IpH"][[1]],
+    E_O = coen[coen$ID == 49, "IpH"][[1]],
+    E_I = coen[coen$ID == 50, "IpH"][[1]],
+    S_T = N2,
+    N_T = S3,
+    S_I = N1,
+    N_O = N3,
+    N_I = S1,
+    S_O = S7)
+```
+
+Plot the intensity 'signatures' of two junctions the junction.
+
+```{r}
+bind_rows(intensity, intensity_coen) %>% 
+  gather("Dir", "I", 3:12) %>% 
+  mutate(Dir2     = factor(substr(Dir, 1, 1)),
+         Dir3     = factor(substr(Dir, 3, 3)),
+         Junction = factor(Junction)) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_path() + 
+    facet_grid(. ~ Junction) +
+    labs(title = "Junction Intensity Profile", x = "Time of day", y = "Intensity, cars per hour")
+```
+
+They have reasonably similar signatures hence we want to plot their velocities. First generate the velocity data for A8 N516.
+```{r}
+velocity_coen <- coen %>% 
+  select(c(1, 2, 11)) %>% 
+  mutate(ID = paste0("ID_", ID)) %>% 
+  spread(ID, SpH) %>% 
+  transmute(
+    Time = as.numeric(substr(Time, 1, 2)),
+    Junction = "A8 N516",
+    W_O = ID_32,
+    W_I = ID_31,
+    E_O = ID_49,
+    E_I = ID_50,
+    S_T = ID_38,
+    N_T = ID_35)
+```
+And plot.
+```{r}
+bind_rows(velocity, velocity_coen) %>% 
+  gather("Dir", "I", 3:8) %>% 
+  mutate(Dir2 = factor(substr(Dir, 1, 1)),
+         Dir3 = factor(substr(Dir, 3, 3)),
+         Junction = factor(Junction)) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_smooth(se = FALSE, method = "loess", span = 0.4) + 
+    facet_grid(. ~ Junction) + 
+    labs(title = "Junction Speed Profile", x = "Time of day", y = "Average hourly speeds (km/hr)")
+```
+
+You can see that the velocity dips are pretty equal, but note that the the traffic from the North going through (green) is equally busy in the afternoon in both places and the at the A8 N516 the average speed remains above 100 km per hour. 
+
+## A67-N634 (Geldrop)
+
+First we start with the usual. Read the data. 
+
+```{r}
+Hour_A67N634_1 <- read_csv("NDW Data/A67-N634/Hourly Data A67 N634 1.0.csv")
+Info_A67N634_1 <- read_csv("NDW Data/A67-N634/Info A67 N634 1.0.csv")
+
+geldrop <- tbl_df(Hour_A67N634_1)
+```
+
+Rename columns for easier manipulation and plotting.
+
+```{r}
+names(geldrop)[c(1,6,11)] <- c("Time", "IpH", "SpH")
+```
+
+Create a map of the locations at which there are intensity and speed measurements.
+
+```{r}
+# Jitter some geo coords because the overlap completely
+geldrop[geldrop$ID %in% c(62, 67, 80, 73),"Lon"] <- geldrop[geldrop$ID %in% c(62, 67, 80, 73),"Lon"] + 0.0001
+geldrop[geldrop$ID %in% c(65, 78, 81),"Lon"] <- geldrop[geldrop$ID %in% c(65, 78, 81),"Lon"] - 0.0001
+geldrop[geldrop$ID %in% c(63, 77, 74, 71),"Lat"] <- geldrop[geldrop$ID %in% c(63, 77, 74, 71),"Lat"] + 0.00005
+geldrop[geldrop$ID %in% c(84, 79, 64),"Lat"] <- geldrop[geldrop$ID %in% c(84, 79, 64),"Lat"] - 0.00005
+```
+
+```{r}
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = geldrop, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       popup= ~as.character(ID),
+                       radius = 3)
+```
+
+Plot the intensity versus speed of each of the many measurement locations.
+
+```{r}
+geldrop %>% 
+  ggplot(aes(x = IpH, y = SpH, col = factor(ID))) + 
+    geom_point(alpha = 0.4) +
+    geom_smooth(se = FALSE)
+```
+We see again that many lines overlap.
+
+We know we want to use the data from 61, 62 and 70 to represent the side roads. Now we want to calculate the traffic leaving, entering and staying on the motorway in both directions.
+
+```{r, results = "hide"}
+# Check that the two different original sources agree with each other, 
+# 71 +72 = 81; 73 + 74 = 82; 79 + 80 = 76; 77 + 78 = 75; 65 + 66 = 63; 67 + 68 = 64
+a <- filter(geldrop, ID == 71) %>% select(IpH) + filter(geldrop, ID == 72) %>% select(IpH)
+(a - filter(geldrop, ID == 81) %>% select(IpH))[[1]]
+b <- filter(geldrop, ID == 73) %>% select(IpH) + filter(geldrop, ID == 74) %>% select(IpH) 
+(b - filter(geldrop, ID == 82) %>% select(IpH))[[1]]
+c <- filter(geldrop, ID == 79) %>% select(IpH) + filter(geldrop, ID == 80) %>% select(IpH) 
+(c - filter(geldrop, ID == 76) %>% select(IpH))[[1]]
+d <- filter(geldrop, ID == 77) %>% select(IpH) + filter(geldrop, ID == 78) %>% select(IpH) 
+(d - filter(geldrop, ID == 75) %>% select(IpH))[[1]]
+e <- filter(geldrop, ID == 65) %>% select(IpH) + filter(geldrop, ID == 66) %>% select(IpH) 
+(e - filter(geldrop, ID == 63) %>% select(IpH))[[1]]
+f <- filter(geldrop, ID == 67) %>% select(IpH) + filter(geldrop, ID == 68) %>% select(IpH) 
+(f - filter(geldrop, ID == 64) %>% select(IpH))[[1]]
+```
+The datasets agree and I choose omit the data from 63, 64, 75, 76, 81, and 82. 
+
+I realise now that the north, south, east , west directions from the other traffic junctions do not fit this junction so well. I want north and south to be the motorway for better plotting comparison. So I will shift and North will be the A67 coming mostly from East (with a little North element to it), a north between 2 and 3 o'clock. 
+
+Then
+```{r}
+intensity_geldrop <- data_frame(
+    Time = c(0:23),
+    Junction = rep("A67 N634", 24),
+    W_O = rep(NA, 24),
+    W_I = geldrop[geldrop$ID == 70, "IpH"][[1]][1:24],
+    E_O = geldrop[geldrop$ID == 61, "IpH"][[1]][1:24],
+    E_I = geldrop[geldrop$ID == 62, "IpH"][[1]][1:24],
+    S_T = c[[1]],
+    N_T = d[[1]],
+    S_I = b[[1]] - c[[1]],
+    N_O = f[[1]] - c[[1]],
+    N_I = e[[1]] - d[[1]],
+    S_O = a[[1]] - d[[1]])
+```
+
+```{r}
+bind_rows(intensity, intensity_geldrop) %>% 
+  gather("Dir", "I", 3:12) %>% 
+  mutate(Dir2     = factor(substr(Dir, 1, 1)),
+         Dir3     = factor(substr(Dir, 3, 3)),
+         Junction = factor(Junction)) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_path() + 
+    facet_grid(. ~ Junction) +
+    labs(title = "Junction Intensity Profile", x = "Time of day", y = "Intensity, cars per hour")
+```
+
+They are not very comparible because the A13 N470 junctions is nearly twice as busy. For the sake of it we can look at the velocity plots.
+
+```{r}
+velocity_geldrop <- geldrop %>% 
+  select(c(1, 2, 11)) %>% 
+  mutate(ID = paste0("ID_", ID)) %>%
+  filter(!is.na(SpH)) %>%
+  spread(ID, SpH) %>%
+  transmute(
+    Time = as.numeric(substr(Time, 1, 2)),
+    Junction = "A67 N634",
+    W_O = NA,
+    W_I = ID_70,
+    E_O = ID_61,
+    E_I = ID_62,
+    S_T = (ID_79 + ID_80) / 2,
+    N_T = (ID_77 + ID_78) / 2
+    )
+```
+And plot.
+```{r}
+bind_rows(velocity, velocity_geldrop) %>% 
+  gather("Dir", "I", 3:8) %>% 
+  mutate(Dir2 = factor(substr(Dir, 1, 1)),
+         Dir3 = factor(substr(Dir, 3, 3)),
+         Junction = factor(Junction)) %>%
+  ggplot(aes(x = Time, y = I, group = Dir, col = Dir2)) +
+    geom_point(alpha = 0.5, aes(shape = Dir3), size = 2) + 
+    geom_smooth(se = FALSE, method = "loess", span = 0.4) + 
+    facet_grid(. ~ Junction) + 
+    labs(title = "Junction Speed Profile", x = "Time of day", y = "Average hourly speeds (km/hr)")
+```
+
+## 3rd round analysis: findings summary
+
+
+
+
+# 4th round analysis: A13 overview analysis
+
+The thought came to me that the junction of A13 with N470 could be a place where traffic is generally quite bad, but that the junction itself might not be the origin of the bad traffic. 
+
+Before I pursue deeper analysis of the junction and similar ones I want to explore ways to identify origins of bad traffic. 
+
+For this I thought to use minute by minute traffic data of A13, which is available for the year 2011 from Rotterdam Open Data. 
+
+There are 4 main pieces of available data: flow and speed in two direction. I focus on speed data in the direction of Rotterdam. (created a feather file previously for faster loading)
+```{r, cache = TRUE}
+# flow <- read_feather("data/Rechts_Flow_2011.feather")
+speed <- read_feather("data/Rechts_Speed_2011.feather")
+```
+
+Add some time columns to data for filtering through. It's a large data set.
+
+```{r}
+jan <- speed[1:(60*24*31),]
+jan$min  <- rep(1:60, 24*31)
+jan$hour <- rep(rep(0:23, each = 60), 31)
+jan$day  <- rep(1:31, each = 24*60)
+```
+
+Subset a smaller piece of the data for exploration. I first chose January and then decided to take a Tuesday not to close to New Years (Jan 25). I 'zoomed in' on the hour when bad traffic starts to build up (between 3pm and 4pm).
+```{r}
+jan_long <- jan %>% 
+  filter(hour %in% c(15), day == 25) %>% 
+  gather("hm", "speed", 1:143) %>% 
+  mutate(dis = as.numeric(sub(pattern = "X", "", hm)),
+         hm = factor(dis),
+         minfc = factor(min))
+```
+
+Then plot along the whole road (x-axis) the velocity of the vehicles. And plot each minute in a different colour. This allows you to see a lot, but it's messy. To further bring across the idea see the next plot.
+```{r}
+jan_long %>% 
+  ggplot(aes(x = dis, y = speed, col = factor(min))) +
+    geom_point() +
+    geom_vline(xintercept = c(19, 41, 60, 115), color = "darkgrey", linetype = 2) +
+    geom_text(aes(x = 19, label = "Brassenkade", y = 10), colour="darkgrey", angle =  90, vjust = 1.2) + 
+    geom_text(aes(x = 41, label = "Oostporweg", y = 10), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 60, label = "N470", y = 10), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 115, label = "N209", y = 10), colour="darkgrey", angle = 90, vjust = 1.2)
+```
+I subset even fewer data, 8 consecutive minutes and create a faceted plot. Each plot plots the whole A13 on the x-axis, where each point represents the speed at a certain place along the road. You can see the 'dips, representing slow traffic. As time progresses these dips usually move to the left, against the direction of traffic. That is because the back of a traffic jam grows and the front dissolves, making the traffic jam crawl backwards.
+```{r, fig.height = 12}
+jan_long %>% 
+  filter(min %in% 33:41) %>% 
+  ggplot(aes(x = dis, y = speed, col = factor(min))) +
+    geom_point() +
+    facet_grid(minfc ~ .) +
+    geom_vline(xintercept = c(19, 41, 60, 115), color = "darkgrey", linetype = 2) +
+    geom_text(aes(x = 19, label = "Brassenkade", y = 10), colour="darkgrey", angle =  90, vjust = 1.2) + 
+    geom_text(aes(x = 41, label = "Oostporweg", y = 10), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 60, label = "N470", y = 10), colour="darkgrey", angle = 90, vjust = 1.2) + 
+    geom_text(aes(x = 115, label = "N209", y = 10), colour="darkgrey", angle = 90, vjust = 1.2)
+```
+Note that I added the grey lines in the plots, they represent the four junctions in the A13, excluding the front (with A4) and Kleinpolderplein. The fours junctions are shown on this map. This allows us to see if the N470 junction is a problem area.
+
+```{r, eval = FALSE}
+junction_loc <- data_frame(Lat = c(52.02764, 52.01162, 51.99635, 51.95020), Lon = c(4.35891, 4.37760, 4.38904, 4.41669))
+
+leaflet() %>%
+      addTiles() %>%  # Add default OpenStreetMap map tiles
+      addCircleMarkers(data = junction_loc, 
+                       lat = ~ Lat, 
+                       lng = ~ Lon, 
+                       radius = 3)
+```
+
+This exploration led me to develop a Shiny app, there I continued the analysis much further. Mainly you can use it to filter any part of the data with select options and then to play the facetted plot in a single plot as a timelapse.
+
+Further I also did some summary analysis. 
+
+It occured to me that the job of a road is to move people along, preferably at approx. speed of the speed limit. A good road does this steadily, and a bad road has a lot of slowing down and speeding back up. The above plots allowed us to see the flux (change in speed), and it seemed that traffic jams simply crwal backwards. That would make each area of road equally bad. 
+
+I calculated, instead of the speed, the change in speed from one minute compared to the previous minute at the same location (for each location). Then I took the absolute value (slowing down is negative, speeding up is positive) and calculated the average. Now we have a 'flux' number for each location on the road. The higher it is the worse. You can plot this for any subset of the 2011 data on the Shiny App. For most subsets I found  plots looking like this one:
+
+![](img/A13 flux.png)
+
+And N470 is usually a peak. That means that here is most slowing down and speeding up across the whole A13. Meaning it is a source of many traffic jams. 
